@@ -1,0 +1,82 @@
+AWSTemplateFormatVersion: 2010-09-09
+Description : Cloud Formation template to have infrastructure to backup s3 object
+
+Parameters :
+  MainS3BucketName :
+    Type : String
+    Description : The name of s3 bucket where the data is to be uploaded
+    MinLength: 3
+    MaxLength: 63
+    AllowedPattern: '^[a-z0-9.-]+$'
+    ConstraintDescription: "The bucket name must contain only lowercase letters, numbers, hyphens, and dots."
+
+  BackupS3BucketName : 
+    Type : String
+    Description : The name of s3 bucket where have backup of the stored file
+    MinLength: 3
+    MaxLength: 63
+    AllowedPattern: '^[a-z0-9.-]+$'
+    ConstraintDescription: "The bucket name must contain only lowercase letters, numbers, hyphens, and dots."
+
+Resources :
+  MainS3Bucket :
+    Type : AWS::S3::Bucket
+    Properties : 
+      BucketName: !Ref MainS3BucketName
+      NotificationConfiguration : 
+        LambdaConfigurations : 
+          - Event : s3:ObjectCreated:*
+            Function : !GetAtt AutoBackupS3ObjectLambdaFunction.Arn
+  
+  BackUpS3Bucket : 
+    Type : AWS::S3::Bucket
+    Properties : 
+      BucketName: !Ref BackupS3BucketName
+
+  AutoBackupS3ObjectLambdaExecutionRole :
+    Type : AWS::IAM::Role
+    Properties : 
+      AssumeRolePolicyDocument : 
+          Version: '2012-10-17'
+          Statement:
+            - Effect: Allow
+              Principal:
+                Service: lambda.amazonaws.com
+              Action: sts:AssumeRole
+      Policies : 
+        - PolicyName : GetS3ObjectAccessPolicy
+          PolicyDocument : 
+            Version: 2012-10-17
+            Statement:
+                Effect: Allow
+                Action:
+                  - s3:GetObject
+                Resource: !Sub arn:aws:s3:::${MainS3BucketName}/*
+        - PolicyName : S3ObjectAccessPolicy
+          PolicyDocument : 
+            Version: 2012-10-17
+            Statement:
+                Effect: Allow
+                Action:
+                  - s3:PutObject
+                Resource: !Sub arn:aws:s3:::${BackupS3BucketName}/*
+      ManagedPolicyArns : 
+        - arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
+
+  AutoBackupS3ObjectLambdaFunction : 
+    Type : AWS::Lambda::Function
+    Properties : 
+      Code : 
+        S3Bucket: project-partials-1745563858254
+        S3Key: lambda-handler.zip
+      Handler : lambda-handler.handler
+      Runtime : python3.10
+      Role : !GetAtt AutoBackupS3ObjectLambdaExecutionRole.Arn
+
+  MainBucketLambdaInvokePermission :
+    Type : AWS::Lambda::Permission
+    Properties :
+      Action : lambda:InvokeFunction
+      FunctionName : !Ref AutoBackupS3ObjectLambdaFunction
+      Principal: s3.amazonaws.com
+      SourceArn : !Sub arn:aws:s3:::${MainS3BucketName}
